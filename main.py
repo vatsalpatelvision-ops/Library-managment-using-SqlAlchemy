@@ -1,6 +1,7 @@
 from database import SessionLocal, engine
 from model import Base, Library , Book ,Member, Issue , Fine
 import csv
+from datetime import timedelta , datetime
 
 Base.metadata.create_all(bind=engine)
 
@@ -233,6 +234,177 @@ def book_menu():
         elif choice == "8":
             break
 
+#!Here create the functions for member managment
+
+def register_member(current_library):
+    name = input("Name: ")
+    phone = input("Phone: ")
+    email = input("Email: ")
+
+    membership_type = input("Type (Student/Teacher/External): ").capitalize()
+
+    if membership_type not in ["Student", "Teacher", "External"]:
+        print("Invalid membership type")
+        return
+
+    join_date = datetime.today().date()
+
+    # Example expiry logic (1 year)
+    expiry_date = join_date + timedelta(days=365)
+
+    member = Member(
+        name=name,
+        phone=phone,
+        email=email,
+        membership_type=membership_type,
+        join_date=join_date,
+        expiry_date=expiry_date,
+        is_active=True,
+        library_id=current_library.id
+    )
+
+    session.add(member)
+    session.commit()
+
+    print("Member registered successfully")
+
+def remove_member(current_library):
+    member_id = input("Enter Member ID: ")
+
+    member = session.query(Member).filter_by(
+        id=member_id,
+        library_id=current_library.id
+    ).first()
+
+    if not member:
+        print("Member not found")
+        return
+
+    # Optional: prevent delete if books issued
+    active_issue = session.query(Issue).filter_by(
+        member_id=member.id,
+        return_date=None
+    ).first()
+
+    if active_issue:
+        print("Cannot delete member with issued books")
+        return
+
+    session.delete(member)
+    session.commit()
+
+    print("Member removed")
+
+def update_member(current_library):
+    member_id = input("Enter Member ID: ")
+
+    member = session.query(Member).filter_by(
+        id=member_id,
+        library_id=current_library.id
+    ).first()
+
+    if not member:
+        print("Member not found")
+        return
+
+    print("Leave blank to keep old value")
+
+    name = input(f"Name ({member.name}): ")
+    phone = input(f"Phone ({member.phone}): ")
+    email = input(f"Email ({member.email}): ")
+
+    if name:
+        member.name = name
+    if phone:
+        member.phone = phone
+    if email:
+        member.email = email
+
+    session.commit()
+    print("Member updated")
+
+def view_all_members(current_library):
+    members = session.query(Member).filter_by(
+        library_id=current_library.id
+    ).all()
+
+    if not members:
+        print("📭 No members found")
+        return
+
+    for m in members:
+        print(f"""
+ID: {m.id}
+Name: {m.name}
+Phone: {m.phone}
+Type: {m.membership_type}
+Active: {m.is_active}
+Expiry: {m.expiry_date}
+-------------------------
+""")
+
+def view_member_profile(current_library):
+    member_id = input("Enter Member ID: ")
+
+    member = session.query(Member).filter_by(
+        id=member_id,
+        library_id=current_library.id
+    ).first()
+
+    if not member:
+        print("Member not found")
+        return
+
+    print(f"""
+===== MEMBER PROFILE =====
+Name: {member.name}
+Type: {member.membership_type}
+Active: {member.is_active}
+Join Date: {member.join_date}
+Expiry Date: {member.expiry_date}
+""")
+
+    # Issued Books
+    issues = session.query(Issue).filter_by(
+        member_id=member.id,
+        return_date=None
+    ).all()
+
+    print("Currently Issued Books:")
+    if not issues:
+        print("None")
+    else:
+        for i in issues:
+            book = session.query(Book).filter_by(id=i.book_id).first()
+            print(f"- {book.title} (Due: {i.due_date})")
+
+    # Fines
+    fines = session.query(Fine).filter_by(
+        member_id=member.id,
+        is_paid=False
+    ).all()
+
+    total_fine = sum(f.amount for f in fines)
+
+    print(f"Pending Fine: {total_fine}")
+
+def toggle_member_status(current_library):
+    member_id = input("Enter Member ID: ")
+
+    member = session.query(Member).filter_by(
+        id=member_id,
+        library_id=current_library.id
+    ).first()
+
+    if not member:
+        print("Member not found")
+        return
+
+    member.is_active = not member.is_active
+    session.commit()
+
+    status = "Active" if member.is_active else "Inactive"
+    print(f"Member is now {status}")
 
 def member_menu():
     while True:
@@ -248,17 +420,17 @@ def member_menu():
         choice = input("Enter choice: ")
 
         if choice == "1":
-            pass
+            register_member(current_library)
         elif choice == "2":
-            pass
+            remove_member(current_library)
         elif choice == "3":
-            pass
+            update_member(current_library)
         elif choice == "4":
-            pass
+            view_all_members(current_library)
         elif choice == "5":
-            pass
+            view_member_profile(current_library)
         elif choice == "6":
-            pass
+            toggle_member_status(current_library)
         elif choice == "7":
             break
 
