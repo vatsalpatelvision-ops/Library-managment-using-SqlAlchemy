@@ -1,5 +1,5 @@
 from database import SessionLocal, engine
-from models import Base, Library
+from model import Base, Library
 
 Base.metadata.create_all(bind=engine)
 
@@ -205,6 +205,8 @@ def admin_menu():
 
 # ------------------ MAIN LOOP ------------------
 def main():
+    global current_library
+
     while True:
         if not current_library:
             print("\n1. Register")
@@ -246,7 +248,6 @@ def main():
             elif choice == "6":
                 admin_menu()
             elif choice == "7":
-                global current_library
                 current_library = None
             elif choice == "0":
                 break
