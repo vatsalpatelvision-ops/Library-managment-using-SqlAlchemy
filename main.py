@@ -434,6 +434,211 @@ def member_menu():
         elif choice == "7":
             break
 
+#! here create the functions for teh issue and return managment
+
+def get_limit(membership_type):
+    return {
+        "Student": 2,
+        "Teacher": 5,
+        "External": 1
+    }.get(membership_type, 0)
+
+
+def issue_book(current_library):
+    member_id = input("Enter Member ID: ")
+    book_id = input("Enter Book ID: ")
+
+    member = session.query(Member).filter_by(
+        id=member_id,
+        library_id=current_library.id
+    ).first()
+
+    book = session.query(Book).filter_by(
+        id=book_id,
+        library_id=current_library.id
+    ).first()
+
+    if not member or not book:
+        print("Invalid member or book")
+        return
+
+    if not member.is_active:
+        print("Member is inactive")
+        return
+
+    if member.expiry_date < datetime.today().date():
+        print("Membership expired")
+        return
+
+    unpaid_fine = session.query(Fine).filter_by(
+        member_id=member.id,
+        is_paid=False
+    ).first()
+
+    if unpaid_fine:
+        print("Clear pending fines first")
+        return
+
+    if book.available_copies <= 0:
+        print("No copies available")
+        return
+
+    existing = session.query(Issue).filter_by(
+        member_id=member.id,
+        book_id=book.id,
+        return_date=None
+    ).first()
+
+    if existing:
+        print("Member already has this book")
+        return
+
+    active_books = session.query(Issue).filter_by(
+        member_id=member.id,
+        return_date=None
+    ).count()
+
+    if active_books >= get_limit(member.membership_type):
+        print("Book limit reached")
+        return
+
+    issue_date = datetime.today().date()
+    due_date = issue_date + timedelta(days=7)
+
+    issue = Issue(
+        book_id=book.id,
+        member_id=member.id,
+        issue_date=issue_date,
+        due_date=due_date,
+        library_id=current_library.id
+    )
+
+    book.available_copies -= 1
+
+    session.add(issue)
+    session.commit()
+
+    print(f"Book issued. Due date: {due_date}")
+
+def return_book(current_library):
+    member_id = input("Enter Member ID: ")
+    book_id = input("Enter Book ID: ")
+
+    issue = session.query(Issue).filter_by(
+        member_id=member_id,
+        book_id=book_id,
+        return_date=None
+    ).first()
+
+    if not issue:
+        print("This book was not issued to this member")
+        return
+
+    today = datetime.today().date()
+    issue.return_date = today
+
+    book = session.query(Book).filter_by(id=book_id).first()
+    book.available_copies += 1
+
+    overdue_days = (today - issue.due_date).days
+
+    if overdue_days > 0:
+        fine_amount = 0
+
+        for day in range(1, overdue_days + 1):
+            if day <= 30:
+                fine_amount += 5
+            else:
+                fine_amount += 10
+
+        fine = Fine(
+            member_id=member_id,
+            amount=fine_amount,
+            is_paid=False,
+            reason="Late return",
+            library_id=current_library.id
+        )
+
+        session.add(fine)
+        print(f"Fine generated: ₹{fine_amount}")
+
+    session.commit()
+    print("Book returned successfully")
+
+def renew_book(current_library):
+    member_id = input("Enter Member ID: ")
+    book_id = input("Enter Book ID: ")
+
+    issue = session.query(Issue).filter_by(
+        member_id=member_id,
+        book_id=book_id,
+        return_date=None
+    ).first()
+
+    if not issue:
+        print("No active issue found")
+        return
+
+    if issue.is_renewed:
+        print("Already renewed once")
+        return
+
+    issue.due_date += timedelta(days=7)
+    issue.is_renewed = True
+
+    session.commit()
+    print(f"Renewed. New due date: {issue.due_date}")
+
+def view_issued_books(current_library):
+    issues = session.query(Issue).filter_by(
+        library_id=current_library.id,
+        return_date=None
+    ).all()
+
+    if not issues:
+        print("No issued books")
+        return
+
+    for i in issues:
+        print(f"""
+Member ID: {i.member_id}
+Book ID: {i.book_id}
+Issue Date: {i.issue_date}
+Due Date: {i.due_date}
+------------------------
+""")
+
+def view_overdue_books(current_library):
+    today = datetime.today().date()
+
+    issues = session.query(Issue).filter(
+        Issue.library_id == current_library.id,
+        Issue.return_date == None,
+        Issue.due_date < today
+    ).all()
+
+    if not issues:
+        print("No overdue books")
+        return
+
+    for i in issues:
+        overdue_days = (today - i.due_date).days
+
+        fine = 0
+        for day in range(1, overdue_days + 1):
+            if day <= 30:
+                fine += 5
+            else:
+                fine += 10
+
+        print(f"""
+Member ID: {i.member_id}
+Book ID: {i.book_id}
+Due Date: {i.due_date}
+Overdue Days: {overdue_days}
+Fine: ₹{fine}
+------------------------
+""")
 
 def issue_menu():
     while True:
@@ -448,15 +653,15 @@ def issue_menu():
         choice = input("Enter choice: ")
 
         if choice == "1":
-            pass
+            issue_book(current_library)
         elif choice == "2":
-            pass
+            return_book(current_library)
         elif choice == "3":
-            pass
+            renew_book(current_library)
         elif choice == "4":
-            pass
+            view_issued_books(current_library)
         elif choice == "5":
-            pass
+            view_overdue_books(current_library)
         elif choice == "6":
             break
 
