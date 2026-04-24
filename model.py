@@ -89,3 +89,18 @@ class Fine(Base):
     reason = Column(String)
 
     library_id = Column(Integer, ForeignKey("libraries.id"))
+
+class AdminSettings(Base):
+    __tablename__ = "admin_settings"
+
+    id = Column(Integer, primary_key=True)
+
+    fine_rate_7_days = Column(Integer, default=5)
+    fine_rate_30_days = Column(Integer, default=10)
+    max_issue_days = Column(Integer, default=7)
+
+    max_books_student = Column(Integer, default=2)
+    max_books_teacher = Column(Integer, default=5)
+    max_books_external = Column(Integer, default=1)
+
+    library_id = Column(Integer, ForeignKey("libraries.id"), unique=True)

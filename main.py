@@ -1,9 +1,10 @@
 from database import SessionLocal, engine
-from model import Base, Library , Book ,Member, Issue , Fine
+from model import Base, Library , Book ,Member, Issue , Fine ,AdminSettings
 import csv
 from datetime import timedelta , datetime
 from sqlalchemy import func
-
+import os
+import json
 
 Base.metadata.create_all(bind=engine)
 
@@ -325,13 +326,13 @@ def update_member(current_library):
     session.commit()
     print("Member updated")
 
-def view_all_members(current_library):
+def view_all_members(current_library): 
     members = session.query(Member).filter_by(
         library_id=current_library.id
     ).all()
 
     if not members:
-        print("📭 No members found")
+        print("No members found")
         return
 
     for m in members:
@@ -972,6 +973,163 @@ def report_menu():
         elif choice == "8":
             break
 
+def get_settings(current_library):
+    settings = session.query(AdminSettings).filter_by(
+        library_id=current_library.id
+    ).first()
+
+    if not settings:
+        settings = AdminSettings(library_id=current_library.id)
+        session.add(settings)
+        session.commit()
+
+    return settings
+
+
+#! here write the function for admin menu
+def change_fine_rate(current_library):
+    settings = get_settings(current_library)
+
+    try:
+        rate1 = int(input("Enter fine per day (first 30 days): "))
+        rate2 = int(input("Enter fine after 30 days: "))
+    except:
+        print("Invalid input")
+        return
+
+    settings.fine_rate_7_days = rate1
+    settings.fine_rate_30_days = rate2
+
+    session.commit()
+    print("Fine rate updated")
+
+def change_issue_days(current_library):
+    settings = get_settings(current_library)
+
+    try:
+        days = int(input("Enter max issue days: "))
+    except:
+        print("Invalid input")
+        return
+
+    settings.max_issue_days = days
+    session.commit()
+
+    print("Issue duration updated")
+
+def change_limits(current_library):
+    settings = get_settings(current_library)
+
+    try:
+        student = int(input("Student max books: "))
+        teacher = int(input("Teacher max books: "))
+        external = int(input("External max books: "))
+    except:
+        print("Invalid input")
+        return
+
+    settings.max_books_student = student
+    settings.max_books_teacher = teacher
+    settings.max_books_external = external
+
+    session.commit()
+    print("Limits updated")
+
+def system_stats(current_library):
+    total_books = session.query(Book).filter_by(
+        library_id=current_library.id
+    ).count()
+
+    total_members = session.query(Member).filter_by(
+        library_id=current_library.id
+    ).count()
+
+    issued_books = session.query(Issue).filter(
+        Issue.library_id == current_library.id,
+        Issue.return_date == None
+    ).count()
+
+    total_fines = session.query(Fine).filter_by(
+        library_id=current_library.id,
+        is_paid=True
+    ).all()
+
+    collected = sum(f.amount for f in total_fines)
+
+    print(f"""
+===== SYSTEM STATS =====
+Total Books: {total_books}
+Total Members: {total_members}
+Currently Issued: {issued_books}
+Fines Collected: ₹{collected}
+=======================
+""")
+
+def backup_data(current_library):
+    folder = "backup"
+
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+
+    data = {
+        "books": [],
+        "members": [],
+        "issues": [],
+        "fines": []
+    }
+
+    # Books
+    books = session.query(Book).filter_by(
+        library_id=current_library.id
+    ).all()
+
+    for b in books:
+        data["books"].append({
+            "id": b.id,
+            "title": b.title,
+            "author": b.author
+        })
+
+    # Members
+    members = session.query(Member).filter_by(
+        library_id=current_library.id
+    ).all()
+
+    for m in members:
+        data["members"].append({
+            "id": m.id,
+            "name": m.name
+        })
+
+    # Issues
+    issues = session.query(Issue).filter_by(
+        library_id=current_library.id
+    ).all()
+
+    for i in issues:
+        data["issues"].append({
+            "book_id": i.book_id,
+            "member_id": i.member_id
+        })
+
+    # Fines
+    fines = session.query(Fine).filter_by(
+        library_id=current_library.id
+    ).all()
+
+    for f in fines:
+        data["fines"].append({
+            "member_id": f.member_id,
+            "amount": f.amount,
+            "paid": f.is_paid
+        })
+
+    filename = f"{folder}/backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+
+    with open(filename, "w") as file:
+        json.dump(data, file, indent=4)
+
+    print(f"Backup created: {filename}")
 
 def admin_menu():
     while True:
@@ -986,15 +1144,15 @@ def admin_menu():
         choice = input("Enter choice: ")
 
         if choice == "1":
-            pass
+            change_fine_rate(current_library)
         elif choice == "2":
-            pass
+            change_issue_days(current_library)
         elif choice == "3":
-            pass
+            change_limits(current_library)
         elif choice == "4":
-            pass
+            system_stats(current_library)
         elif choice == "5":
-            pass
+            backup_data(current_library)
         elif choice == "6":
             break
 
