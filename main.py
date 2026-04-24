@@ -2,6 +2,8 @@ from database import SessionLocal, engine
 from model import Base, Library , Book ,Member, Issue , Fine
 import csv
 from datetime import timedelta , datetime
+from sqlalchemy import func
+
 
 Base.metadata.create_all(bind=engine)
 
@@ -665,6 +667,105 @@ def issue_menu():
         elif choice == "6":
             break
 
+#! here create functions for fine menu
+
+def check_fine(current_library):
+    member_id = input("Enter Member ID: ")
+
+    fines = session.query(Fine).filter_by(
+        member_id=member_id,
+        library_id=current_library.id,
+        is_paid=False
+    ).all()
+
+    if not fines:
+        print("No pending fines")
+        return
+
+    total = sum(f.amount for f in fines)
+
+    print("Pending Fines:")
+    for f in fines:
+        print(f"ID: {f.id} | Amount: ₹{f.amount} | Reason: {f.reason}")
+
+    print(f"Total Fine: {total}")
+
+def pay_fine(current_library):
+    member_id = input("Enter Member ID: ")
+
+    fines = session.query(Fine).filter_by(
+        member_id=member_id,
+        library_id=current_library.id,
+        is_paid=False
+    ).all()
+
+    if not fines:
+        print("No pending fines")
+        return
+
+    total = sum(f.amount for f in fines)
+
+    print(f"Total payable: ₹{total}")
+    confirm = input("Confirm payment? (y/n): ")
+
+    if confirm.lower() != "y":
+        print("Payment cancelled")
+        return
+
+    for f in fines:
+        f.is_paid = True
+
+    session.commit()
+
+    # ----------- RECEIPT -----------
+    print("\n====== PAYMENT RECEIPT ======")
+    print(f"Member ID: {member_id}")
+    print(f"Amount Paid: ₹{total}")
+    print(f"Date: {datetime.now()}")
+    print("Status: SUCCESS")
+    print("=============================")
+
+def view_pending_fines(current_library):
+    fines = session.query(Fine).filter_by(
+        library_id=current_library.id,
+        is_paid=False
+    ).all()
+
+    if not fines:
+        print("No pending fines in system")
+        return
+
+    for f in fines:
+        print(f"""
+Fine ID: {f.id}
+Member ID: {f.member_id}
+Amount: ₹{f.amount}
+Reason: {f.reason}
+-------------------------
+""")
+
+def fine_history(current_library):
+    member_id = input("Enter Member ID: ")
+
+    fines = session.query(Fine).filter_by(
+        member_id=member_id,
+        library_id=current_library.id
+    ).all()
+
+    if not fines:
+        print("No fine history")
+        return
+
+    for f in fines:
+        status = "Paid" if f.is_paid else "Unpaid"
+
+        print(f"""
+Fine ID: {f.id}
+Amount: ₹{f.amount}
+Reason: {f.reason}
+Status: {status}
+-------------------------
+""")
 
 def fine_menu():
     while True:
@@ -678,16 +779,167 @@ def fine_menu():
         choice = input("Enter choice: ")
 
         if choice == "1":
-            pass
+            check_fine(current_library)
         elif choice == "2":
-            pass
+            pay_fine(current_library)
         elif choice == "3":
-            pass
+            view_pending_fines(current_library)
         elif choice == "4":
-            pass
+            fine_history(current_library)
         elif choice == "5":
             break
 
+#! Here create function for report menu
+
+# ------------------ SEARCH BOOK ------------------
+def search_book(current_library):
+    keyword = input("Enter title/author/ISBN/genre: ")
+
+    books = session.query(Book).filter(
+        Book.library_id == current_library.id,
+        (
+            Book.title.ilike(f"%{keyword}%") |
+            Book.author.ilike(f"%{keyword}%") |
+            Book.isbn.ilike(f"%{keyword}%") |
+            Book.genre.ilike(f"%{keyword}%")
+        )
+    ).all()
+
+    if not books:
+        print("No matching books found")
+        return
+
+    for b in books:
+        print(f"{b.id} | {b.title} | {b.author} | {b.genre}")
+
+def search_member(current_library):
+    keyword = input("Enter name/ID/phone: ")
+
+    members = session.query(Member).filter(
+        Member.library_id == current_library.id,
+        (
+            Member.name.ilike(f"%{keyword}%") |
+            Member.phone.ilike(f"%{keyword}%")
+        )
+    ).all()
+
+    if not members:
+        print("No matching members")
+        return
+
+    for m in members:
+        print(f"{m.id} | {m.name} | {m.phone}")
+
+def top_books(current_library):
+    results = session.query(
+        Issue.book_id,
+        func.count(Issue.id).label("count")
+    ).filter(
+        Issue.library_id == current_library.id
+    ).group_by(
+        Issue.book_id
+    ).order_by(
+        func.count(Issue.id).desc()
+    ).limit(5).all()
+
+    if not results:
+        print("No issue data")
+        return
+
+    print("Top 5 Books:")
+    for r in results:
+        book = session.query(Book).filter_by(id=r.book_id).first()
+        print(f"{book.title} → Issued {r.count} times")
+
+def highest_fines(current_library):
+    results = session.query(
+        Fine.member_id,
+        func.sum(Fine.amount).label("total")
+    ).filter(
+        Fine.library_id == current_library.id
+    ).group_by(
+        Fine.member_id
+    ).order_by(
+        func.sum(Fine.amount).desc()
+    ).limit(5).all()
+
+    if not results:
+        print("No fine data")
+        return
+
+    print("Top Members by Fine:")
+    for r in results:
+        member = session.query(Member).filter_by(id=r.member_id).first()
+        print(f"{member.name} → ₹{r.total}")
+
+def dead_stock(current_library):
+    issued_book_ids = session.query(Issue.book_id).distinct()
+
+    books = session.query(Book).filter(
+        Book.library_id == current_library.id,
+        ~Book.id.in_(issued_book_ids)
+    ).all()
+
+    if not books:
+        print("No dead stock")
+        return
+
+    print("Dead Stock Books:")
+    for b in books:
+        print(f"{b.id} | {b.title}")
+
+def monthly_report(current_library):
+    month = int(input("Enter month (1-12): "))
+    year = int(input("Enter year: "))
+
+    issues = session.query(Issue).filter(
+        Issue.library_id == current_library.id,
+        func.extract('month', Issue.issue_date) == month,
+        func.extract('year', Issue.issue_date) == year
+    ).all()
+
+    if not issues:
+        print("No issues in this month")
+        return
+
+    print(f"eport for {month}/{year}")
+    for i in issues:
+        print(f"Book ID: {i.book_id} | Member ID: {i.member_id} | Date: {i.issue_date}")
+
+    print(f"\nTotal Issues: {len(issues)}")
+
+def overdue_report(current_library):
+    today = datetime.today().date()
+
+    issues = session.query(Issue).filter(
+        Issue.library_id == current_library.id,
+        Issue.return_date == None,
+        Issue.due_date < today
+    ).all()
+
+    if not issues:
+        print("No overdue books")
+        return
+
+    print("\n⚠ Overdue Report:")
+    for i in issues:
+        overdue_days = (today - i.due_date).days
+
+        fine = 0
+        for day in range(1, overdue_days + 1):
+            if day <= 30:
+                fine += 5
+            else:
+                fine += 10
+
+        print(f"""
+Member ID: {i.member_id}
+Book ID: {i.book_id}
+Due Date: {i.due_date}
+Overdue Days: {overdue_days}
+Fine: ₹{fine}
+-------------------------
+""")
 
 def report_menu():
     while True:
@@ -704,19 +956,19 @@ def report_menu():
         choice = input("Enter choice: ")
 
         if choice == "1":
-            pass
+            search_book(current_library)
         elif choice == "2":
-            pass
+            search_member(current_library)
         elif choice == "3":
-            pass
+            top_books(current_library)
         elif choice == "4":
-            pass
+            highest_fines(current_library)
         elif choice == "5":
-            pass
+            dead_stock(current_library)
         elif choice == "6":
-            pass
+            monthly_report(current_library)
         elif choice == "7":
-            pass
+            overdue_report(current_library)
         elif choice == "8":
             break
 
