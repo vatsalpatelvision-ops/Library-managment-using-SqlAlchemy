@@ -1,5 +1,6 @@
 from database import SessionLocal, engine
-from model import Base, Library
+from model import Base, Library , Book ,Member, Issue , Fine
+import csv
 
 Base.metadata.create_all(bind=engine)
 
@@ -34,6 +35,172 @@ def login():
     else:
         print("Invalid credentials")
 
+#! Book managment functions 
+
+def add_book(current_library):
+    title = input("Title: ")
+    author = input("Author: ")
+    genre = input("Genre: ")
+
+    try:
+        total = int(input("Total copies: "))
+    except:
+        print("Invalid number")
+        return
+
+    isbn = input("ISBN: ")
+    year = input("Publication Year: ")
+    shelf = input("Shelf location: ")
+
+    book = Book(
+        title=title,
+        author=author,
+        genre=genre,
+        total_copies=total,
+        available_copies=total,
+        isbn=isbn,
+        publication_year=year,
+        shelf_location=shelf,
+        library_id=current_library.id
+    )
+
+    session.add(book)
+    session.commit()
+
+    print("Book added successfully")
+
+
+def remove_book(current_library):
+    book_id = input("Enter Book ID: ")
+
+    book = session.query(Book).filter_by(
+        id=book_id,
+        library_id=current_library.id
+    ).first()
+
+    if not book:
+        print("Book not found")
+        return
+
+    # Edge case: book currently issued
+    issued = session.query(Issue).filter_by(
+        book_id=book.id,
+        return_date=None
+    ).first()
+
+    if issued:
+        print("Cannot delete, book is currently issued")
+        return
+
+    session.delete(book)
+    session.commit()
+
+    print("Book removed")
+
+def update_book(current_library):
+    book_id = input("Enter Book ID: ")
+
+    book = session.query(Book).filter_by(
+        id=book_id,
+        library_id=current_library.id
+    ).first()
+
+    if not book:
+        print("Book not found")
+        return
+
+    print("Leave blank to keep old value")
+
+    title = input(f"Title ({book.title}): ")
+    author = input(f"Author ({book.author}): ")
+    genre = input(f"Genre ({book.genre}): ")
+
+    if title:
+        book.title = title
+    if author:
+        book.author = author
+    if genre:
+        book.genre = genre
+
+    session.commit()
+    print("Book updated")
+
+def view_all_books(current_library):
+    books = session.query(Book).filter_by(
+        library_id=current_library.id
+    ).all()
+
+    if not books:
+        print("No books found")
+        return
+
+    for b in books:
+        print(f"""
+ID: {b.id}
+Title: {b.title}
+Author: {b.author}
+Genre: {b.genre}
+Available: {b.available_copies}/{b.total_copies}
+ISBN: {b.isbn}
+Location: {b.shelf_location}
+-------------------------
+""")
+
+def view_available_books(current_library):
+    books = session.query(Book).filter(
+        Book.library_id == current_library.id,
+        Book.available_copies > 0
+    ).all()
+
+    if not books:
+        print("No available books")
+        return
+
+    for b in books:
+        print(f"{b.id} - {b.title} ({b.available_copies} available)")
+
+def view_books_by_genre(current_library):
+    genre = input("Enter genre: ")
+
+    books = session.query(Book).filter_by(
+        genre=genre,
+        library_id=current_library.id
+    ).all()
+
+    if not books:
+        print("No books found in this genre")
+        return
+
+    for b in books:
+        print(f"{b.id} - {b.title} by {b.author}")
+
+def import_books_csv(current_library):
+    file_path = input("Enter CSV file path: ")
+
+    try:
+        with open(file_path, newline='', encoding='utf-8') as file:
+            reader = csv.DictReader(file)
+
+            for row in reader:
+                book = Book(
+                    title=row["title"],
+                    author=row["author"],
+                    genre=row["genre"],
+                    total_copies=int(row["total_copies"]),
+                    available_copies=int(row["total_copies"]),
+                    isbn=row["isbn"],
+                    publication_year=row["publication_year"],
+                    shelf_location=row["shelf_location"],
+                    library_id=current_library.id
+                )
+                session.add(book)
+
+            session.commit()
+            print("Books imported successfully")
+
+    except Exception as e:
+        print("Error importing CSV:", e)
+
 
 def book_menu():
     while True:
@@ -50,19 +217,19 @@ def book_menu():
         choice = input("Enter choice: ")
 
         if choice == "1":
-            pass
+            add_book(current_library)
         elif choice == "2":
-            pass
+            remove_book(current_library)
         elif choice == "3":
-            pass
+            update_book(current_library)
         elif choice == "4":
-            pass
+            view_all_books(current_library)
         elif choice == "5":
-            pass
+            view_available_books(current_library)
         elif choice == "6":
-            pass
+            view_books_by_genre(current_library)
         elif choice == "7":
-            pass
+            import_books_csv(current_library)
         elif choice == "8":
             break
 
@@ -203,7 +370,6 @@ def admin_menu():
             break
 
 
-# ------------------ MAIN LOOP ------------------
 def main():
     global current_library
 
